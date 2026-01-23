@@ -3,7 +3,6 @@ from qdrant_client.http.models import VectorParams, ScoredPoint
 import numpy as np
 from app.core.config import QDRANT_URL, QDRANT_COLLECTION, VECTOR_SIZE
 
-# Initialize Qdrant client
 client = QdrantClient(url=QDRANT_URL)
 
 # Create collection if it doesn't exist
@@ -13,7 +12,6 @@ if QDRANT_COLLECTION not in [c.name for c in client.get_collections().collection
         vectors_config=VectorParams(size=VECTOR_SIZE, distance="Cosine")
     )
 
-# Store embeddings
 def upsert_text(text: str, vector: np.ndarray, metadata: dict = None):
     if metadata is None:
         metadata = {}
@@ -21,14 +19,13 @@ def upsert_text(text: str, vector: np.ndarray, metadata: dict = None):
         collection_name=QDRANT_COLLECTION,
         points=[
             {
-                "id": None,  # auto-generate
+                "id": None,
                 "vector": vector.tolist(),
                 "payload": {"text": text, **metadata}
             }
         ]
     )
 
-# Search vectors
 def search_vector(query_vector: np.ndarray, top_k: int = 5):
     response = client.search(
         collection_name=QDRANT_COLLECTION,

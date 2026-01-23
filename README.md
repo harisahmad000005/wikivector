@@ -1,47 +1,51 @@
 # WikiVector
 
-**WikiVector** is a FastAPI-based application that extracts Wikipedia content, transforms it into vector embeddings, and stores it in a **Qdrant vector database** for **semantic search**. It allows you to query Wikipedia topics semantically, returning the most relevant sections of articles.
+**WikiVector** is a **FastAPI-based application** that fetches Wikipedia content, transforms it into vector embeddings, stores them in **Qdrant** for semantic search, and uses **PostgreSQL via SQLAlchemy** to track relational info, logs, and user queries.
+
+This architecture allows you to:
+
+* Search Wikipedia **by meaning**, not just keywords
+* Track ingested articles to **avoid duplicates**
+* Log user queries for analytics and dashboards
 
 ---
 
 ## Features
 
-*  Fetch and parse Wikipedia articles using the MediaWiki API
-*  Clean and chunk text for embeddings (~500 words per chunk)
-*  Generate embeddings with **SentenceTransformers**
-*  Store vectors in **Qdrant** for fast semantic search
-*  Background ingestion via FastAPI `/ingest` endpoint
-*  Semantic search via `/search` endpoint
-*  Dockerized for local development and production
-*  Persistent vector storage using Docker volumes
+* ✅ Fetch and parse Wikipedia articles
+* ✅ Chunk text (~500 words per chunk)
+* ✅ Generate embeddings with **SentenceTransformers**
+* ✅ Store vectors + payload in **Qdrant** for fast semantic search
+* ✅ Store relational metadata in **PostgreSQL** (SQLAlchemy)
+* ✅ ETL + ingestion logs for production-grade workflow
+* ✅ API endpoints for `/ingest`, `/search`, `/history`
+* ✅ Dockerized for easy local and production deployment
 
 ---
 
 ## Architecture Overview
 
 ```text
-Wikipedia API
-     │
-     ▼
-ETL Pipeline (clean → chunk → embed)
-     │
-     ▼
-Qdrant Vector DB
-     │
-     ▼
-FastAPI API Endpoints
+                ┌─────────────┐
+                │ Wikipedia   │
+                │ API         │
+                └─────┬───────┘
+                      │
+                      ▼
+                 ETL Pipeline
+          (clean → chunk → embed)
+                      │
+          ┌───────────┴───────────┐
+          │                       │
+          ▼                       ▼
+   Qdrant Vector DB          PostgreSQL (SQLAlchemy)
+   (vectors + payload)       (articles, logs, queries)
+          │                       │
+          └───────────┬───────────┘
+                      ▼
+                FastAPI Endpoints
+      (/ingest, /search, /history)
 ```
-
-**Components**
-
-| Component                         | Purpose                                   |
-| --------------------------------- | ----------------------------------------- |
-| `app/main.py`                     | FastAPI app entry point                   |
-| `app/api/routes.py`               | API endpoints (`/ingest`, `/search`)      |
-| `app/services/wiki_client.py`     | Fetch Wikipedia content                   |
-| `app/etl/wiki_etl.py`             | Clean, chunk, embed, store in Qdrant      |
-| `app/vectorstore/qdrant_store.py` | Qdrant client + search logic              |
-| `app/core/config.py`              | Centralized environment/config management |
 
 ---
 
@@ -49,35 +53,41 @@ FastAPI API Endpoints
 
 * Python 3.11+
 * Docker & Docker Compose
-* Internet connection (for Wikipedia API and embeddings)
+* Internet connection (Wikipedia API & embeddings)
 * `.env` file in project root
 
 ---
 
 ## Installation
 
-1. Clone the repository:
+1. Clone the repo:
 
 ```bash
 git clone https://github.com/yourusername/wikivector.git
 cd wikivector
 ```
 
-2. Create a `.env` file in the root directory:
+2. Create a `.env` file:
 
 ```env
+# App
 APP_NAME=wikivector
 ENV=local
 
+# Qdrant
 QDRANT_HOST=qdrant
 QDRANT_PORT=6333
 QDRANT_COLLECTION=wikivector_embeddings
 
+# PostgreSQL
+POSTGRES_URL=postgresql://wikivector:password@postgres:5432/wikivector_db
+
+# Embeddings
 EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 VECTOR_SIZE=384
 ```
 
-3. Build and run the project using Docker Compose:
+3. Start Docker services:
 
 ```bash
 docker compose up --build
@@ -85,6 +95,7 @@ docker compose up --build
 
 * FastAPI: `http://localhost:8000`
 * Qdrant: `http://localhost:6333`
+* PostgreSQL: `localhost:5432`
 
 ---
 
@@ -96,62 +107,54 @@ docker compose up --build
 GET /health
 ```
 
-**Response**
+**Response:**
 
 ```json
-{
-  "status": "ok"
-}
+{"status": "ok"}
 ```
 
 ---
 
-### Ingest Wikipedia Topic
+### 1️⃣ Ingest Wikipedia Article
 
 ```http
 POST /ingest?topic=Python_(programming_language)
 ```
 
-**What it does:**
+**Workflow:**
 
-1. Fetches Wikipedia page via MediaWiki API
-2. Cleans and chunks the text (~500 words per chunk)
-3. Generates embeddings using SentenceTransformers
-4. Stores embeddings in Qdrant along with metadata:
+1. Checks PostgreSQL to avoid duplicates
+2. Fetches Wikipedia content → chunks → embeddings
+3. Stores vectors + metadata in Qdrant
+4. Stores ingestion info in PostgreSQL
 
-   * `page_title`
-   * `section_index`
-   * `text` chunk
-
-**Response**
+**Response:**
 
 ```json
-{
-  "message": "ETL started"
-}
+{"message": "Ingested 10 chunks for 'Python_(programming_language)'"}
 ```
 
 ---
 
-### Semantic Search
+### 2️⃣ Semantic Search
 
 ```http
 POST /search
 Content-Type: application/json
 
 {
-  "query": "How does Python handle object-oriented programming?",
+  "query": "object-oriented programming in Python",
   "top_k": 5
 }
 ```
 
 **Workflow:**
 
-1. Embeds the query using the same model as ETL
-2. Performs nearest-neighbor search in Qdrant
-3. Returns top `k` relevant chunks with metadata
+1. Convert query → embedding
+2. Qdrant searches nearest vectors → returns payload
+3. Logs query in PostgreSQL
 
-**Example Response**
+**Example Response:**
 
 ```json
 [
@@ -160,68 +163,88 @@ Content-Type: application/json
     "page_title": "Python (programming language)",
     "section_index": 2,
     "score": 0.94
-  },
-  {
-    "text": "Classes in Python allow encapsulation of data and functions...",
-    "page_title": "Python (programming language)",
-    "section_index": 3,
-    "score": 0.91
   }
 ]
 ```
 
 ---
 
-## ETL & Vector Storage Details
+### 3️⃣ Query History
 
-* **ETL**:
+```http
+GET /history?limit=10
+```
 
-  * Fetch Wikipedia content with `wikipedia` library / MediaWiki API
-  * Clean sections (remove references, tables, markup)
-  * Chunk text (~500 words per chunk)
-  * Generate embeddings using **SentenceTransformers**
+**Response:**
 
-* **Qdrant**:
+```json
+[
+  {"query_text": "object-oriented programming in Python", "result_count": 5, "created_at": "2026-01-23T10:15:00"},
+  ...
+]
+```
 
-  * Stores vectors and metadata
-  * Vector size: 384
-  * Distance metric: Cosine
-  * Collection auto-created if missing
-
-* **Metadata stored**:
-
-  * `page_title` → Wikipedia page title
-  * `section_index` → chunk index in page
-  * `text` → actual chunk
+* Allows analytics, dashboards, and auditing user queries
 
 ---
 
-## Docker Notes
+## ETL & Storage
 
-* Qdrant stores vectors in Docker volume for persistence
-* FastAPI connects to Qdrant using `.env` configuration
-* The app works **locally and in production** with the same configuration
-* Recommended workflow:
+### Qdrant
 
-  1. `docker compose up -d qdrant`
-  2. `docker compose up --build api`
+* Stores vectors and payload (text + metadata)
+* Vector size: 384
+* Distance metric: Cosine
+* Supports **payload filtering** (like SQL “WHERE”)
+
+### PostgreSQL
+
+* Stores relational data: ingested articles, logs, query history
+* Enables filtering, joins, and analytics
+* Prevents re-ingesting same pages
+
+---
+
+## Docker Compose Overview
+
+```yaml
+services:
+  api: FastAPI app
+  qdrant: Vector DB
+  postgres: Relational DB
+```
+
+* Persistent volumes for Qdrant & PostgreSQL
+* Environment variables stored in `.env`
+
+---
+
+## Example Workflow
+
+1. **Ingest article:** `/ingest?topic=Python_(programming_language)`
+2. **Search semantically:** `/search` with your query
+3. **Check query history:** `/history`
+
+This ensures **semantic search + relational tracking** work seamlessly.
 
 ---
 
 ## Future Improvements
 
-* Async ingestion using **Celery + Redis**
-* Rate-limiting and retries for Wikipedia API
+* Async ingestion via Celery + Redis
+* Rate-limiting & retries for Wikipedia API
 * Multi-language Wikipedia ingestion
-* OpenAI embeddings for larger models
-* Enhanced `/search` with filters and snippet highlighting
+* OpenAI embeddings for better accuracy
+* Advanced filtering & analytics dashboards
 
 ---
 
 ## References
 
-* [FastAPI Documentation](https://fastapi.tiangolo.com/)
-* [Qdrant Documentation](https://qdrant.tech/documentation/)
+* [FastAPI](https://fastapi.tiangolo.com/)
+* [Qdrant](https://qdrant.tech/documentation/)
 * [MediaWiki API](https://www.mediawiki.org/wiki/API:Main_page)
 * [SentenceTransformers](https://www.sbert.net/)
+* [SQLAlchemy](https://www.sqlalchemy.org/)
 
+---

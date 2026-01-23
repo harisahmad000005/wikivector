@@ -1,11 +1,13 @@
-# App
 APP_NAME=wikivector
 ENV=local
 
 # Qdrant
-QDRANT_HOST=qdrant    
+QDRANT_HOST=qdrant
 QDRANT_PORT=6333
 QDRANT_COLLECTION=wikivector_embeddings
+
+# PostgreSQL
+POSTGRES_URL=postgresql://wikivector:password@postgres:5432/wikivector_db
 
 # Embeddings
 EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
