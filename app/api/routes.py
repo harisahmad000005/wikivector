@@ -1,9 +1,18 @@
-from fastapi import APIRouter, BackgroundTasks
-from app.etl.wiki_etl import run_wiki_etl
+from fastapi import APIRouter
+from pydantic import BaseModel
+from app.vectorstore.qdrant_store import search_vector
+from sentence_transformers import SentenceTransformer
+from app.core.config import EMBEDDING_MODEL
 
 router = APIRouter()
+model = SentenceTransformer(EMBEDDING_MODEL)
 
-@router.post("/ingest")
-def ingest(topic: str, bg: BackgroundTasks):
-    bg.add_task(run_wiki_etl, topic)
-    return {"message": "ETL started"}
+class SearchRequest(BaseModel):
+    query: str
+    top_k: int = 5
+
+@router.post("/search")
+def semantic_search(request: SearchRequest):
+    query_vec = model.encode(request.query)
+    results = search_vector(query_vec, top_k=request.top_k)
+    return results

@@ -1,0 +1,12 @@
+# App
+APP_NAME=wikivector
+ENV=local
+
+# Qdrant
+QDRANT_HOST=qdrant    
+QDRANT_PORT=6333
+QDRANT_COLLECTION=wikivector_embeddings
+
+# Embeddings
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+VECTOR_SIZE=384
